@@ -64,6 +64,9 @@
   .agenda .what { min-width: 0; overflow-wrap: anywhere; }
   .agenda .trial-tag { color: var(--trial); font-weight: 600; }
   .agenda .pay-tag { color: var(--accent); }
+  .status { color: var(--muted); font-size: 13px; min-height: 1.2em; margin: 8px 0 0; }
+  ul[hidden] { display: none; }
+  #list { margin-top: 12px; }
   .cal .num { display: block; }
   button.cell { font: inherit; font-weight: normal; color: inherit; background: transparent; width: 100%; cursor: pointer; }
   button.cell:hover { border-color: var(--accent); }
@@ -110,7 +113,7 @@
   </section>
 
   <section class="card">
-    <h2>구독 등록</h2>
+    <h2>구독 관리</h2>
     <form id="form" novalidate>
       <label>이름
         <input id="name" required maxlength="50" placeholder="예: Netflix" autocomplete="off">
@@ -147,11 +150,10 @@
       <p class="error" id="error" role="alert"></p>
       <button type="submit">등록</button>
     </form>
-  </section>
+    <p class="status" id="status" role="status"></p>
 
-  <section class="card">
-    <h2>등록된 구독</h2>
-    <ul id="list"></ul>
+    <button type="button" class="toggle" id="listToggle" aria-controls="list" aria-expanded="false"></button>
+    <ul id="list" hidden></ul>
   </section>
 </div>
 
@@ -504,9 +506,19 @@ function renderAgenda(today, events) {
   }
 }
 
+let listOpen = false; // 등록된 구독 목록을 펼쳐 보고 있는지 (저장하지 않는다)
+
+function renderListToggle() {
+  const btn = $('listToggle');
+  btn.textContent = listOpen ? '구독 목록 닫기' : `구독 목록 보기 (${subs.length})`;
+  btn.setAttribute('aria-expanded', String(listOpen));
+  $('list').hidden = !listOpen;
+}
+
 function render() {
   const today = getToday();
   renderSummary(today);
+  renderListToggle();
   const events = monthEvents(subs, today);
   renderCalendar(today, events);
   renderAgenda(today, events);
@@ -597,6 +609,8 @@ $('form').addEventListener('submit', (e) => {
   e.preventDefault();
   const { sub, error } = readForm();
   $('error').textContent = error || '';
+  // 목록이 접혀 있어도 등록됐는지 알 수 있게 확인 문구를 보여준다.
+  $('status').textContent = error ? '' : `${sub.name} 등록 완료`;
   if (error) return;
 
   subs.push(sub);
@@ -611,6 +625,7 @@ $('form').addEventListener('submit', (e) => {
 $('kind').addEventListener('change', () => { $('error').textContent = ''; syncKind(); });
 
 $('agendaToggle').addEventListener('click', () => { agendaExpanded = !agendaExpanded; render(); });
+$('listToggle').addEventListener('click', () => { listOpen = !listOpen; renderListToggle(); });
 
 // ---------- 시작 ----------
 $('storageNotice').hidden = storageAvailable();
