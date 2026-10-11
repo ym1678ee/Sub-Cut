@@ -73,6 +73,8 @@
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
   button.ghost.del { color: var(--err); }
   button.danger { background: var(--err); color: var(--on-err); }
+  #cancelEdit[hidden] { display: none; }
+  #list li.editing { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
   .cal .num { display: block; }
   button.cell { font: inherit; font-weight: normal; color: inherit; background: transparent; width: 100%; cursor: pointer; }
   button.cell:hover { border-color: var(--accent); }
@@ -154,7 +156,8 @@
       </div>
 
       <p class="error" id="error" role="alert"></p>
-      <button type="submit">등록</button>
+      <button type="submit" id="submitBtn">등록</button>
+      <button type="button" class="ghost" id="cancelEdit" hidden>수정 취소</button>
     </form>
     <p class="status" id="status" role="status"></p>
 
@@ -551,6 +554,7 @@ function cancelDelete(s) {
 function deleteSub(s) {
   subs = subs.filter((x) => x.id !== s.id);
   confirmingDeleteId = null;
+  if (editingId === s.id) stopEdit(); // 수정 중이던 항목을 지우면 수정 모드도 끝낸다
   $('storageNotice').hidden = saveSubs(subs);
   $('error').textContent = '';
   $('status').textContent = `${s.name} 삭제 완료`;
@@ -573,7 +577,10 @@ function buildActions(s) {
       makeButton('삭제', 'small danger confirm-yes', `${s.name} 삭제 확정`, () => deleteSub(s)),
     );
   } else {
-    box.append(makeButton('삭제', 'small ghost del', `${s.name} 삭제`, () => askDelete(s)));
+    box.append(
+      makeButton('수정', 'small ghost edit', `${s.name} 수정`, () => startEdit(s)),
+      makeButton('삭제', 'small ghost del', `${s.name} 삭제`, () => askDelete(s)),
+    );
   }
   return box;
 }
@@ -633,6 +640,7 @@ function render() {
     }
 
     li.dataset.id = s.id;
+    if (s.id === editingId) li.classList.add('editing');
     li.appendChild(buildActions(s));
     // 삭제 확인 중에 Esc를 누르면 취소한다.
     li.addEventListener('keydown', (e) => {
@@ -664,7 +672,7 @@ function readForm() {
   if ($('kind').value === 'trial') {
     const expiryDate = $('expiryDate').value;
     if (!DATE_RE.test(expiryDate)) return { error: '체험 만료일을 입력해 주세요.' };
-    return { sub: { id: newId(), name, kind: 'trial', expiryDate } };
+    return { sub: { name, kind: 'trial', expiryDate } };
   }
 
   const amountText = $('amount').value.trim();
@@ -674,23 +682,78 @@ function readForm() {
   }
   const baseDate = $('baseDate').value;
   if (!DATE_RE.test(baseDate)) return { error: '결제 일자를 입력해 주세요.' };
-  return { sub: { id: newId(), name, kind: 'pay', amount, cycle: $('cycle').value, baseDate } };
+  return { sub: { name, kind: 'pay', amount, cycle: $('cycle').value, baseDate } };
 }
 
 $('form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const { sub, error } = readForm();
+  const { sub, error } = readForm(); // id는 들어 있지 않다. 새로 등록할 때만 붙인다.
   $('error').textContent = error || '';
-  // 목록이 접혀 있어도 등록됐는지 알 수 있게 확인 문구를 보여준다.
-  $('status').textContent = error ? '' : `${sub.name} 등록 완료`;
-  if (error) return;
+  if (error) {
+    // 수정 중이었다면 수정 모드를 유지한 채 오류만 보여준다.
+    $('status').textContent = editingId ? `${$('name').value.trim() || '구독'} 수정 중` : '';
+    return;
+  }
 
-  subs.push(sub);
+  if (editingId) {
+    // 같은 id와 같은 위치에서 값만 바꾼다.
+    subs = subs.map((s) => (s.id === editingId ? { ...sub, id: s.id } : s));
+    $('status').textContent = `${sub.name} 수정 완료`;
+    stopEdit();
+  } else {
+    subs.push({ id: newId(), ...sub });
+    // 목록이 접혀 있어도 등록됐는지 알 수 있게 확인 문구를 보여준다.
+    $('status').textContent = `${sub.name} 등록 완료`;
+    // 이름과 날짜, 금액은 비우고 종류와 주기는 유지한다. (연속 등록하기 편하게)
+    for (const id of ['name', 'amount', 'baseDate', 'expiryDate']) $(id).value = '';
+  }
   $('storageNotice').hidden = saveSubs(subs);
   render();
+  $('name').focus();
+});
 
-  // 이름과 날짜, 금액은 비우고 종류와 주기는 유지한다. (연속 등록하기 편하게)
+// ---------- 수정 ----------
+let editingId = null; // 지금 폼에서 수정 중인 구독의 id (null이면 새로 등록)
+
+// 목록 항목의 값을 폼에 채워서 수정한다. 결제/체험은 입력 항목이 달라 종류는 바꾸지 못하게 잠근다.
+function startEdit(s) {
+  editingId = s.id;
+  confirmingDeleteId = null;
+  $('name').value = s.name;
+  $('kind').value = s.kind;
+  $('kind').disabled = true;
+  syncKind();
+  if (s.kind === 'pay') {
+    $('amount').value = String(s.amount);
+    $('cycle').value = s.cycle;
+    $('baseDate').value = s.baseDate;
+  } else {
+    $('expiryDate').value = s.expiryDate;
+  }
+  $('submitBtn').textContent = '저장';
+  $('cancelEdit').hidden = false;
+  $('error').textContent = '';
+  $('status').textContent = `${s.name} 수정 중`;
+  render();
+  $('form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  $('name').focus();
+}
+
+// 수정 모드를 끝내고 폼을 등록 상태로 되돌린다. (다시 그리는 것은 호출한 쪽이 한다)
+function stopEdit() {
+  editingId = null;
+  $('kind').disabled = false;
   for (const id of ['name', 'amount', 'baseDate', 'expiryDate']) $(id).value = '';
+  $('submitBtn').textContent = '등록';
+  $('cancelEdit').hidden = true;
+  syncKind();
+}
+
+$('cancelEdit').addEventListener('click', () => {
+  stopEdit();
+  $('error').textContent = '';
+  $('status').textContent = '';
+  render();
   $('name').focus();
 });
 
