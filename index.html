@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sub-Cut</title>
+<script>
+// 처음 방문이면 시작 화면을 먼저 보여준다. 메인 화면이 잠깐 보였다 사라지지 않도록 <head>에서 미리 정한다.
+// 저장소를 읽을 수 없는 환경에서는 "봤음"을 기억할 수 없으므로 매번 시작 화면을 보여준다.
+try {
+  if (!localStorage.getItem('sub-cut:intro-seen')) document.documentElement.classList.add('show-intro');
+} catch (e) {
+  document.documentElement.classList.add('show-intro');
+}
+</script>
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
@@ -88,11 +97,36 @@
   .day-detail .day-sum { margin-top: 8px; font-size: 13px; font-weight: 600; text-align: right; }
   button.toggle { width: 100%; margin-top: 10px; background: transparent; color: var(--accent); border: 1px solid var(--line); }
   button.toggle[hidden] { display: none; }
+
+  /* 시작 화면: 처음 방문할 때만 화면 전체를 덮는 버튼. 어디를 눌러도 메인 화면으로 넘어간다. */
+  #start { display: none; }
+  .show-intro #start { display: grid; }
+  .show-intro #main { display: none; }
+  button.start { width: 100%; min-height: 100vh; min-height: 100dvh; place-content: center; justify-items: center; gap: 14px;
+    padding: 24px 16px; border: 0; border-radius: 0; background: var(--bg); color: var(--text); font-weight: 400; cursor: pointer; }
+  button.start:focus-visible { outline-offset: -6px; }
+  /* 자간(letter-spacing)은 마지막 글자 뒤에도 붙으므로, 같은 크기의 왼쪽 여백으로 가운데 정렬을 맞춘다. */
+  .start-title { font-size: clamp(40px, 13vw, 76px); font-weight: 800; letter-spacing: .14em; padding-left: .14em; line-height: 1.1; color: var(--accent); }
+  .start-desc { font-size: 16px; line-height: 1.6; color: var(--muted); }
+  .start-desc span { display: block; }
+  .start-hint { margin-top: 28px; font-size: 15px; color: var(--text); animation: start-blink 2.2s ease-in-out infinite; }
+  @keyframes start-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .start-hint { animation: none; } }
+  #mainTitle:focus { outline: none; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Sub-Cut</h1>
+<button type="button" id="start" class="start">
+  <span class="start-title">SUB-CUT</span>
+  <span class="start-desc">
+    <span>구독 결제일과 무료 체험 만료일을 한눈에,</span>
+    <span>필요없는 구독을 확인하세요!</span>
+  </span>
+  <span class="start-hint">화면을 클릭하세요</span>
+</button>
+
+<div class="wrap" id="main">
+  <h1 id="mainTitle" tabindex="-1">Sub-Cut</h1>
 
   <div class="notice" id="storageNotice" hidden>
     이 브라우저에서는 저장소를 사용할 수 없어요. 입력한 내용은 새로고침하면 사라져요.
@@ -769,6 +803,16 @@ $('amount').addEventListener('input', () => {
 
 $('agendaToggle').addEventListener('click', () => { agendaExpanded = !agendaExpanded; render(); });
 $('listToggle').addEventListener('click', () => { listOpen = !listOpen; renderListToggle(); });
+
+// ---------- 시작 화면 ----------
+// 시작 화면을 누르면 "봤음"을 기록하고 메인 화면으로 넘어간다. (누르기 전에 새로고침하면 다시 보인다)
+const INTRO_KEY = 'sub-cut:intro-seen';
+$('start').addEventListener('click', () => {
+  try { localStorage.setItem(INTRO_KEY, '1'); } catch { /* 저장소를 못 쓰면 다음에도 시작 화면이 보인다 */ }
+  document.documentElement.classList.remove('show-intro');
+  window.scrollTo(0, 0);
+  $('mainTitle').focus(); // 키보드 사용자가 메인 화면에서 이어서 움직일 수 있게 제목으로 포커스를 옮긴다
+});
 
 // ---------- 시작 ----------
 $('storageNotice').hidden = storageAvailable();
