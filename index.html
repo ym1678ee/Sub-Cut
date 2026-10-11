@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sub-Cut</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1c2230; --muted: #6b7385; --line: #e3e6ec;
+    --pay: #3b6cf6; --trial: #e8590c; --danger: #d92d3a; --warn: #d98a00; --ok: #2f9e5b;
+    --track: #e9ecf2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1b2030; --text: #e8ebf3; --muted: #939bb0; --line: #2a3045;
+      --pay: #6f94ff; --trial: #ff8a4c; --danger: #ff6b76; --warn: #f0b13a; --ok: #4cc585;
+      --track: #2a3045;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 24px; }
+  h1 span { color: var(--pay); }
+  .sub { color: var(--muted); font-size: 13px; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat small { color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; align-items: end; margin-bottom: 16px; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); min-width: 0; }
+  button { cursor: pointer; background: var(--pay); color: #fff; border-color: transparent; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--muted); border-color: var(--line); font-weight: 400; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--pay); outline-offset: 1px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .item { border: 1px solid var(--line); border-left: 5px solid var(--pay); border-radius: 10px; padding: 10px 12px; }
+  .item.trial { border-left-color: var(--trial); }
+  .row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .name { font-weight: 600; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; margin-left: 6px; font-weight: 600; }
+  .badge.pay { color: var(--pay); } .badge.trial { color: var(--trial); }
+  .dday { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .dday.danger { color: var(--danger); } .dday.warn { color: var(--warn); } .dday.ok { color: var(--ok); }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--track); margin-top: 8px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
+  .bar i.warn { background: var(--warn); } .bar i.danger { background: var(--danger); }
+  .del { padding: 2px 8px; font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-head button { padding: 2px 10px; background: transparent; color: var(--text); border-color: var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
+  .dow { font-size: 11px; color: var(--muted); padding-bottom: 2px; }
+  .day { min-height: 44px; border-radius: 8px; padding: 3px 0; font-size: 12px; background: var(--bg); position: relative; }
+  .day.out { opacity: .35; }
+  .day.today { outline: 2px solid var(--pay); }
+  .dots { display: flex; justify-content: center; gap: 2px; flex-wrap: wrap; margin-top: 2px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pay); }
+  .dot.trial { background: var(--trial); border-radius: 2px; transform: rotate(45deg); }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .legend .dot { display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .day-list { margin-top: 10px; font-size: 13px; }
+  .tools { display: flex; gap: 8px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sub<span>-Cut</span></h1>
+    <div class="sub">정기 결제일과 무료 체험 만료일을 한눈에</div>
+  </header>
+
+  <section class="summary" id="summary"></section>
+
+  <div class="layout">
+    <div class="card">
+      <h2>구독 추가</h2>
+      <form id="form">
+        <label>이름<input name="name" required placeholder="예: Netflix"></label>
+        <label>종류
+          <select name="kind">
+            <option value="pay">정기 결제</option>
+            <option value="trial">무료 체험</option>
+          </select>
+        </label>
+        <label><span id="dateLabel">결제일</span><input name="date" type="date" required></label>
+        <label id="cycleWrap">주기
+          <select name="cycle">
+            <option value="month">매월</option>
+            <option value="year">매년</option>
+            <option value="week">매주</option>
+          </select>
+        </label>
+        <label>금액(원)<input name="amount" type="number" min="0" step="100" placeholder="0"></label>
+        <button type="submit">추가</button>
+      </form>
+
+      <h2>다가오는 순서</h2>
+      <ul id="list"></ul>
+      <div class="tools">
+        <button class="ghost" id="sample" type="button">예시 데이터 넣기</button>
+        <button class="ghost" id="clear" type="button">전체 삭제</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="cal-head">
+        <button id="prev" aria-label="이전 달">‹</button>
+        <b id="monthTitle"></b>
+        <button id="next" aria-label="다음 달">›</button>
+      </div>
+      <div class="grid" id="cal"></div>
+      <div class="legend">
+        <span><span class="dot"></span>정기 결제</span>
+        <span><span class="dot trial"></span>체험 만료</span>
+      </div>
+      <div class="day-list" id="dayList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = 'sub-cut:v1';
+const $ = (id) => document.getElementById(id);
+const won = (n) => (n || 0).toLocaleString('ko-KR') + '원';
+const DAY = 86400000;
+
+let subs = load();
+let view = startOfMonth(new Date());
+let selected = null;
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(subs)); } catch {}
+}
+
+function today() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function parse(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function iso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function diffDays(a, b) { return Math.round((a - b) / DAY); }
+
+// base 날짜에서 n번째 주기 뒤 날짜 (말일 보정: 31일 → 30/28일)
+function nth(base, cycle, n) {
+  if (cycle === 'week') return new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7 * n);
+  const months = cycle === 'year' ? 12 * n : n;
+  const t = new Date(base.getFullYear(), base.getMonth() + months, 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return new Date(t.getFullYear(), t.getMonth(), Math.min(base.getDate(), last));
+}
+
+// 오늘 이후(오늘 포함) 첫 이벤트 날짜와 직전 날짜
+function nextEvent(s) {
+  const base = parse(s.date), t = today();
+  if (s.kind === 'trial') return { next: base, prev: null };
+  let n = 0, d = base;
+  while (d < t) d = nth(base, s.cycle, ++n);
+  return { next: d, prev: n > 0 ? nth(base, s.cycle, n - 1) : null };
+}
+
+function eventsInMonth(m) {
+  const first = new Date(m.getFullYear(), m.getMonth(), 1);
+  const last = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+  const out = {};
+  const add = (d, s) => (out[iso(d)] ||= []).push(s);
+  for (const s of subs) {
+    const base = parse(s.date);
+    if (s.kind === 'trial') { if (base >= first && base <= last) add(base, s); continue; }
+    for (let n = 0, d = base; d <= last; d = nth(base, s.cycle, ++n)) if (d >= first) add(d, s);
+  }
+  return out;
+}
+
+function level(days, kind) {
+  if (days <= (kind === 'trial' ? 3 : 1)) return 'danger';
+  if (days <= (kind === 'trial' ? 7 : 5)) return 'warn';
+  return 'ok';
+}
+function ddayText(days) { return days === 0 ? 'D-DAY' : days > 0 ? `D-${days}` : `D+${-days}`; }
+const CYCLE = { month: '매월', year: '매년', week: '매주' };
+
+function render() {
+  const t = today();
+  const rows = subs.map((s) => ({ s, ...nextEvent(s) }))
+    .map((r) => ({ ...r, days: diffDays(r.next, t) }))
+    .sort((a, b) => a.days - b.days);
+
+  // 요약
+  const active = rows.filter((r) => r.s.kind === 'pay');
+  const monthly = active.reduce((sum, r) => sum + (r.s.amount || 0) *
+    (r.s.cycle === 'year' ? 1 / 12 : r.s.cycle === 'week' ? 52 / 12 : 1), 0);
+  const in7 = rows.filter((r) => r.days >= 0 && r.days <= 7);
+  const trials = rows.filter((r) => r.s.kind === 'trial' && r.days >= 0);
+  $('summary').innerHTML = `
+    <div class="stat"><small>월 예상 지출</small><b>${won(Math.round(monthly))}</b></div>
+    <div class="stat"><small>7일 내 일정</small><b>${in7.length}건</b></div>
+    <div class="stat"><small>진행 중인 체험</small><b>${trials.length}건</b></div>`;
+
+  // 목록
+  const list = $('list');
+  list.innerHTML = '';
+  if (!rows.length) list.innerHTML = '<li class="empty">아직 등록된 구독이 없어요.</li>';
+  for (const r of rows) {
+    const { s, days } = r;
+    const expired = s.kind === 'trial' && days < 0;
+    const lv = expired ? 'danger' : level(days, s.kind);
+    let pct;
+    if (s.kind === 'trial') pct = Math.max(0, Math.min(100, (1 - days / 30) * 100));
+    else {
+      const total = diffDays(r.next, r.prev || nth(parse(s.date), s.cycle, -1));
+      pct = Math.max(0, Math.min(100, (1 - days / total) * 100));
+    }
+    const li = document.createElement('li');
+    li.className = 'item ' + s.kind;
+    li.innerHTML = `
+      <div class="row">
+        <div><span class="name"></span><span class="badge ${s.kind}">${s.kind === 'trial' ? '체험' : '결제'}</span></div>
+        <div><span class="dday ${lv}">${expired ? '만료됨 ' : ''}${ddayText(days)}</span>
+          <button class="ghost del" aria-label="삭제">✕</button></div>
+      </div>
+      <div class="meta">${iso(r.next)} · ${s.kind === 'trial' ? '체험 만료' : CYCLE[s.cycle] + ' 결제'}${s.amount ? ' · ' + won(s.amount) : ''}</div>
+      <div class="bar"><i class="${lv === 'ok' ? '' : lv}" style="width:${pct}%"></i></div>`;
+    li.querySelector('.name').textContent = s.name;
+    li.querySelector('.del').onclick = () => { subs = subs.filter((x) => x.id !== s.id); save(); render(); };
+    list.appendChild(li);
+  }
+
+  renderCal();
+}
+
+function renderCal() {
+  const ev = eventsInMonth(view);
+  $('monthTitle').textContent = `${view.getFullYear()}년 ${view.getMonth() + 1}월`;
+  const cal = $('cal');
+  cal.innerHTML = ['일', '월', '화', '수', '목', '금', '토'].map((d) => `<div class="dow">${d}</div>`).join('');
+  const start = new Date(view.getFullYear(), view.getMonth(), 1 - view.getDay());
+  const tk = iso(today());
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    if (i >= 35 && d.getMonth() !== view.getMonth()) break;
+    const k = iso(d), list = d.getMonth() === view.getMonth() ? ev[k] || [] : [];
+    const el = document.createElement('div');
+    el.className = 'day' + (d.getMonth() !== view.getMonth() ? ' out' : '') + (k === tk ? ' today' : '');
+    el.innerHTML = `${d.getDate()}<div class="dots">${list.map((s) => `<span class="dot ${s.kind === 'trial' ? 'trial' : ''}"></span>`).join('')}</div>`;
+    if (list.length) { el.style.cursor = 'pointer'; el.onclick = () => { selected = k; renderDayList(ev); }; }
+    cal.appendChild(el);
+  }
+  renderDayList(ev);
+}
+
+function renderDayList(ev) {
+  const box = $('dayList');
+  const list = selected && ev[selected];
+  if (!list) { box.textContent = ''; return; }
+  box.innerHTML = `<b>${selected}</b><br>`;
+  for (const s of list) {
+    const line = document.createElement('div');
+    line.textContent = `${s.kind === 'trial' ? '◆ 체험 만료' : '● 결제'} · ${s.name}${s.amount ? ' · ' + won(s.amount) : ''}`;
+    box.appendChild(line);
+  }
+}
+
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  subs.push({
+    id: Date.now() + Math.random().toString(16).slice(2),
+    name: f.get('name').trim(), kind: f.get('kind'), date: f.get('date'),
+    cycle: f.get('cycle'), amount: Number(f.get('amount')) || 0,
+  });
+  save(); e.target.reset(); syncKind(); render();
+});
+
+function syncKind() {
+  const trial = document.querySelector('[name=kind]').value === 'trial';
+  $('cycleWrap').hidden = trial;
+  $('dateLabel').textContent = trial ? '만료일' : '첫 결제일';
+}
+document.querySelector('[name=kind]').addEventListener('change', syncKind);
+
+$('prev').onclick = () => { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); selected = null; renderCal(); };
+$('next').onclick = () => { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); selected = null; renderCal(); };
+
+$('clear').onclick = () => { if (subs.length && confirm('모든 구독을 삭제할까요?')) { subs = []; save(); render(); } };
+$('sample').onclick = () => {
+  const t = today(), at = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+  const mk = (name, kind, n, cycle, amount) => ({ id: name + n, name, kind, date: at(n), cycle, amount });
+  subs.push(mk('Netflix', 'pay', 3, 'month', 17000), mk('YouTube Premium', 'pay', 10, 'month', 14900),
+    mk('Notion', 'pay', 40, 'year', 120000), mk('Spotify 체험', 'trial', 2, 'month', 10900),
+    mk('ChatGPT 체험', 'trial', 12, 'month', 29000));
+  save(); render();
+};
+
+syncKind();
+render();
+</script>
+</body>
+</html>
