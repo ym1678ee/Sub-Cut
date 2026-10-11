@@ -112,7 +112,19 @@ try {
   .start-hint { margin-top: 28px; font-size: 15px; color: var(--text); animation: start-blink 2.2s ease-in-out infinite; }
   @keyframes start-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .start-hint { animation: none; } }
-  #mainTitle:focus { outline: none; }
+  #mainTitle:focus, #manageTitle:focus, #listTitle:focus { outline: none; }
+
+  /* 화면 이동 링크: 메인의 "구독 목록 등록하기", 구독 관리 화면의 "←Home" */
+  a.navbtn { display: block; margin-bottom: 16px; padding: 12px; text-align: center; text-decoration: none; font-weight: 600;
+    color: var(--accent); background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  a.navlink { display: inline-block; padding: 6px 12px; text-decoration: none; font-weight: 600; color: var(--text);
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  a.navbtn:focus-visible, a.navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  a.navbtn:hover, a.navlink:hover { border-color: var(--accent); }
+  .topbar { margin-bottom: 12px; }
+  .hint { margin: -8px 0 16px; text-align: center; font-size: 13px; color: var(--muted); }
+  .hint[hidden] { display: none; }
+  #listTitle { margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -126,17 +138,22 @@ try {
 </button>
 
 <div class="wrap" id="main">
-  <h1 id="mainTitle" tabindex="-1">Sub-Cut</h1>
-
   <div class="notice" id="storageNotice" hidden>
     이 브라우저에서는 저장소를 사용할 수 없어요. 입력한 내용은 새로고침하면 사라져요.
   </div>
+
+  <!-- 메인 화면 -->
+  <div id="homeView">
+  <h1 id="mainTitle" tabindex="-1">Sub-Cut</h1>
 
   <section class="card summary" id="summary" aria-live="polite">
     <div class="label">이번 달 남은 구독료</div>
     <div class="total" id="total"></div>
     <div class="range" id="range"></div>
   </section>
+
+  <a href="#manage" class="navbtn" id="goManage"></a>
+  <p class="hint" id="emptyHint" hidden>구독 목록 등록하기를 눌러 구독을 등록하세요.</p>
 
   <section class="card">
     <h2 id="calTitle">이번 달 캘린더</h2>
@@ -153,9 +170,15 @@ try {
     <ul class="agenda" id="agenda"></ul>
     <button type="button" class="toggle" id="agendaToggle" aria-controls="agenda" aria-expanded="false" hidden></button>
   </section>
+  </div>
+
+  <!-- 구독 관리 화면 -->
+  <div id="manageView" hidden>
+  <div class="topbar"><a href="#home" class="navlink" id="goHome">←Home</a></div>
+  <h1 id="manageTitle" tabindex="-1">구독 관리</h1>
 
   <section class="card">
-    <h2>구독 관리</h2>
+    <h2>구독 등록</h2>
     <form id="form" novalidate>
       <label>이름
         <input id="name" required maxlength="50" placeholder="예: Netflix" autocomplete="off">
@@ -195,9 +218,10 @@ try {
     </form>
     <p class="status" id="status" role="status"></p>
 
-    <button type="button" class="toggle" id="listToggle" aria-controls="list" aria-expanded="false"></button>
-    <ul id="list" hidden></ul>
+    <h2 id="listTitle" tabindex="-1"></h2>
+    <ul id="list"></ul>
   </section>
+  </div>
 </div>
 
 <script>
@@ -549,13 +573,11 @@ function renderAgenda(today, events) {
   }
 }
 
-let listOpen = false; // 등록된 구독 목록을 펼쳐 보고 있는지 (저장하지 않는다)
-
-function renderListToggle() {
-  const btn = $('listToggle');
-  btn.textContent = listOpen ? '구독 목록 닫기' : `구독 목록 보기 (${subs.length})`;
-  btn.setAttribute('aria-expanded', String(listOpen));
-  $('list').hidden = !listOpen;
+// 구독 개수에 따라 바뀌는 문구: 메인의 이동 링크, 빈 상태 안내, 구독 관리 화면의 목록 제목
+function renderNav() {
+  $('goManage').textContent = `구독 목록 등록하기 (${subs.length})`;
+  $('emptyHint').hidden = subs.length > 0;
+  $('listTitle').textContent = `등록된 구독 (${subs.length})`;
 }
 
 // ---------- 삭제 ----------
@@ -593,7 +615,7 @@ function deleteSub(s) {
   $('error').textContent = '';
   $('status').textContent = `${s.name} 삭제 완료`;
   render();
-  $('listToggle').focus(); // 지운 항목은 사라졌으므로 포커스를 목록 버튼으로 옮긴다
+  $('listTitle').focus(); // 지운 항목은 사라졌으므로 포커스를 목록 제목으로 옮긴다
 }
 
 function buildActions(s) {
@@ -622,7 +644,7 @@ function buildActions(s) {
 function render() {
   const today = getToday();
   renderSummary(today);
-  renderListToggle();
+  renderNav();
   const events = monthEvents(subs, today);
   renderCalendar(today, events);
   renderAgenda(today, events);
@@ -802,21 +824,47 @@ $('amount').addEventListener('input', () => {
 });
 
 $('agendaToggle').addEventListener('click', () => { agendaExpanded = !agendaExpanded; render(); });
-$('listToggle').addEventListener('click', () => { listOpen = !listOpen; renderListToggle(); });
+// ---------- 화면 전환 ----------
+// 같은 문서 안에서 주소의 해시로 화면을 바꾼다. #manage는 구독 관리 화면, 그 밖의 모든 주소는 메인 화면이다.
+// 해시를 쓰면 브라우저의 뒤로 가기/앞으로 가기가 그대로 동작하고, 주소로 바로 열 수도 있다.
+const currentRoute = () => (location.hash === '#manage' ? 'manage' : 'home');
+const routeTitle = () => $(currentRoute() === 'manage' ? 'manageTitle' : 'mainTitle');
+
+function applyRoute() {
+  const manage = currentRoute() === 'manage';
+  $('homeView').hidden = manage;
+  $('manageView').hidden = !manage;
+  document.title = manage ? '구독 관리 - Sub-Cut' : 'Sub-Cut';
+}
+
+window.addEventListener('hashchange', () => {
+  // 구독 관리 화면을 떠나면 진행 중이던 수정/삭제 확인은 접고, 돌아왔을 때 처음 상태로 보이게 한다.
+  if (currentRoute() === 'home') {
+    if (editingId) stopEdit();
+    confirmingDeleteId = null;
+    $('error').textContent = '';
+    $('status').textContent = '';
+  }
+  applyRoute();
+  render();
+  window.scrollTo(0, 0);
+  routeTitle().focus(); // 키보드 사용자가 새 화면 제목부터 이어서 움직일 수 있게 한다
+});
 
 // ---------- 시작 화면 ----------
-// 시작 화면을 누르면 "봤음"을 기록하고 메인 화면으로 넘어간다. (누르기 전에 새로고침하면 다시 보인다)
+// 시작 화면을 누르면 "봤음"을 기록하고, 주소에 맞는 화면으로 넘어간다. (누르기 전에 새로고침하면 다시 보인다)
 const INTRO_KEY = 'sub-cut:intro-seen';
 $('start').addEventListener('click', () => {
   try { localStorage.setItem(INTRO_KEY, '1'); } catch { /* 저장소를 못 쓰면 다음에도 시작 화면이 보인다 */ }
   document.documentElement.classList.remove('show-intro');
   window.scrollTo(0, 0);
-  $('mainTitle').focus(); // 키보드 사용자가 메인 화면에서 이어서 움직일 수 있게 제목으로 포커스를 옮긴다
+  routeTitle().focus(); // 키보드 사용자가 화면에서 이어서 움직일 수 있게 제목으로 포커스를 옮긴다
 });
 
 // ---------- 시작 ----------
 $('storageNotice').hidden = storageAvailable();
 syncKind();
+applyRoute();
 render();
 </script>
 </body>
