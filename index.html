@@ -9,11 +9,18 @@
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
     --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --on-err: #ffffff; --trial: #c2410c; --sel: #e7ecff;
+    /* D-day 칩 색: 긴급(D-DAY·D-1)=빨강, 임박(D-2·D-3)=노랑, 여유(D-4 이상)=초록 */
+    --dd-red-fg: #b4232a; --dd-red-bg: #fdeaea; --dd-red-bd: #d92d3a;
+    --dd-yellow-fg: #7a5200; --dd-yellow-bg: #fff3bf; --dd-yellow-bd: #b98600;
+    --dd-green-fg: #1d6b3d; --dd-green-bg: #e3f6ea; --dd-green-bd: #2f9e5b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141b; --card: #1a1f2b; --text: #e8ebf2; --muted: #98a2b3; --line: #2b3242;
       --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --on-err: #2a1114; --trial: #fb923c; --sel: #26304f;
+      --dd-red-fg: #ff9aa2; --dd-red-bg: #3d1c24; --dd-red-bd: #ff6b7e;
+      --dd-yellow-fg: #ffd84d; --dd-yellow-bg: #3a3000; --dd-yellow-bd: #d4a900;
+      --dd-green-fg: #7be0a3; --dd-green-bg: #14301f; --dd-green-bd: #3fb36f;
     }
   }
   * { box-sizing: border-box; }
@@ -62,6 +69,9 @@
   .agenda li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 10px; align-items: baseline; }
   .agenda .date { font-weight: 600; font-variant-numeric: tabular-nums; }
   .agenda .dday { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+  .agenda .dday.urgent { color: var(--dd-red-fg); background: var(--dd-red-bg); border-color: var(--dd-red-bd); font-weight: 700; }
+  .agenda .dday.soon { color: var(--dd-yellow-fg); background: var(--dd-yellow-bg); border-color: var(--dd-yellow-bd); font-weight: 600; }
+  .agenda .dday.calm { color: var(--dd-green-fg); background: var(--dd-green-bg); border-color: var(--dd-green-bd); }
   .agenda .what { min-width: 0; overflow-wrap: anywhere; }
   .agenda .trial-tag { color: var(--trial); font-weight: 600; }
   .agenda .pay-tag { color: var(--accent); }
@@ -346,6 +356,9 @@ function weekdayOf(ds) {
 }
 const daysUntil = (ds, today) => toDayNumber(ds) - toDayNumber(today);
 const ddayText = (diff) => (diff === 0 ? 'D-DAY' : diff > 0 ? `D-${diff}` : `D+${-diff}`);
+// D-day 긴급도: D-DAY와 D-1은 urgent(빨강), D-2와 D-3은 soon(노랑), 그 밖은 calm(초록).
+// 남은 일정만 다루므로 diff는 0 이상이다. 색은 보조 수단이고 D-day 글자는 항상 함께 표시한다.
+const urgency = (diff) => (diff <= 1 ? 'urgent' : diff <= 3 ? 'soon' : 'calm');
 
 // 오늘(포함)부터 이번 달 말일까지의 일정(결제일, 체험 만료일)을 날짜순으로 돌려준다.
 // 결제일은 총합과 같은 remainingPaymentDates로 구하므로 둘이 어긋나지 않는다.
@@ -541,8 +554,9 @@ function renderAgenda(today, events) {
     date.textContent = `${monthDay(e.date)} (${WEEKDAYS[weekdayOf(e.date)]})`;
 
     const dday = document.createElement('span');
-    dday.className = 'dday';
-    dday.textContent = ddayText(daysUntil(e.date, today));
+    const diff = daysUntil(e.date, today);
+    dday.className = `dday ${urgency(diff)}`;
+    dday.textContent = ddayText(diff);
 
     const what = document.createElement('span');
     what.className = 'what';
