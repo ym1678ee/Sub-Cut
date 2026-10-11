@@ -98,10 +98,13 @@
   .bar { height: 7px; border-radius: 999px; background: var(--track); margin-top: 10px; overflow: hidden; }
   .bar i { display: block; height: 100%; border-radius: 999px; background: var(--ok); transition: width .4s ease; }
   .bar i.warn { background: var(--warn); } .bar i.danger { background: var(--danger); }
-  .del { padding: 2px 8px; font-size: 12px; margin-left: 6px; border-radius: 8px; }
+  .del, .edit { padding: 2px 8px; font-size: 12px; margin-left: 6px; border-radius: 8px; }
   .del:hover { color: var(--danger); border-color: var(--danger); }
+  .edit:hover { color: var(--pay); border-color: var(--pay); }
+  .item.editing { border-color: var(--pay); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pay) 18%, transparent); }
+  .toast { margin-top: 10px; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
   .empty { color: var(--muted); text-align: center; padding: 28px 0; border: 1px dashed var(--line); border-radius: 14px; }
-  .tools { display: flex; gap: 8px; margin-top: 14px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
   .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   .cal-head b { font-size: 16px; letter-spacing: -.01em; }
@@ -160,7 +163,8 @@
           </select>
         </label>
         <label>금액(원)<input name="amount" type="number" min="0" step="100" placeholder="0"></label>
-        <button type="submit">추가</button>
+        <button type="submit" id="submitBtn">추가</button>
+        <button type="button" class="ghost" id="cancelEdit" hidden>취소</button>
       </form>
 
       <h2>다가오는 순서</h2>
@@ -168,7 +172,11 @@
       <div class="tools">
         <button class="ghost" id="sample" type="button">예시 데이터 넣기</button>
         <button class="ghost" id="clear" type="button">전체 삭제</button>
+        <button class="ghost" id="export" type="button">내보내기</button>
+        <button class="ghost" id="import" type="button">가져오기</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
+      <div class="toast" id="toast" role="status"></div>
     </div>
 
     <div class="card">
@@ -196,6 +204,7 @@ const DAY = 86400000;
 let subs = load();
 let view = startOfMonth(new Date());
 let selected = null;
+let editingId = null;
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
@@ -286,12 +295,18 @@ function render() {
       <div class="row">
         <div><span class="name"></span><span class="badge ${s.kind}">${s.kind === 'trial' ? '체험' : '결제'}</span></div>
         <div><span class="dday ${lv}">${expired ? '만료됨 ' : ''}${ddayText(days)}</span>
-          <button class="ghost del" aria-label="삭제">✕</button></div>
+          <button class="ghost edit" aria-label="수정">수정</button><button class="ghost del" aria-label="삭제">✕</button></div>
       </div>
       <div class="meta">${iso(r.next)} · ${s.kind === 'trial' ? '체험 만료' : CYCLE[s.cycle] + ' 결제'}${s.amount ? ' · ' + won(s.amount) : ''}</div>
       <div class="bar"><i class="${lv === 'ok' ? '' : lv}" style="width:${pct}%"></i></div>`;
     li.querySelector('.name').textContent = s.name;
-    li.querySelector('.del').onclick = () => { subs = subs.filter((x) => x.id !== s.id); save(); render(); };
+    if (s.id === editingId) li.classList.add('editing');
+    li.querySelector('.edit').onclick = () => startEdit(s);
+    li.querySelector('.del').onclick = () => {
+      subs = subs.filter((x) => x.id !== s.id);
+      if (editingId === s.id) stopEdit();
+      save(); render();
+    };
     list.appendChild(li);
   }
 
@@ -333,13 +348,67 @@ function renderDayList(ev) {
 $('form').addEventListener('submit', (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
-  subs.push({
-    id: Date.now() + Math.random().toString(16).slice(2),
+  const data = {
     name: f.get('name').trim(), kind: f.get('kind'), date: f.get('date'),
     cycle: f.get('cycle'), amount: Number(f.get('amount')) || 0,
-  });
-  save(); e.target.reset(); syncKind(); render();
+  };
+  if (editingId) subs = subs.map((s) => (s.id === editingId ? { ...s, ...data } : s));
+  else subs.push({ id: newId(), ...data });
+  save(); stopEdit(); render();
 });
+
+function newId() { return Date.now() + Math.random().toString(16).slice(2); }
+
+// 수정: 목록 항목을 폼에 불러와 같은 폼으로 저장
+function startEdit(s) {
+  editingId = s.id;
+  const form = $('form');
+  for (const k of ['name', 'kind', 'date', 'cycle', 'amount']) form.elements[k].value = s[k] ?? '';
+  syncKind();
+  $('submitBtn').textContent = '저장';
+  $('cancelEdit').hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  form.elements.name.focus();
+  render();
+}
+function stopEdit() {
+  editingId = null;
+  $('form').reset();
+  $('submitBtn').textContent = '추가';
+  $('cancelEdit').hidden = true;
+  syncKind();
+}
+$('cancelEdit').onclick = () => { stopEdit(); render(); };
+
+// 백업: JSON 내보내기 / 가져오기 (같은 id는 덮어쓰고 나머지는 합침)
+$('export').onclick = () => {
+  if (!subs.length) return note('내보낼 구독이 없어요.');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(subs, null, 2)], { type: 'application/json' }));
+  a.download = `sub-cut-${iso(today())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  note(`${subs.length}건을 내보냈어요.`);
+};
+$('import').onclick = () => $('importFile').click();
+$('importFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const arr = JSON.parse(await file.text());
+    const valid = (Array.isArray(arr) ? arr : []).filter((x) => x && typeof x.name === 'string' &&
+      (x.kind === 'pay' || x.kind === 'trial') && /^\d{4}-\d{2}-\d{2}$/.test(x.date))
+      .map((x) => ({ id: String(x.id || newId()), name: x.name, kind: x.kind, date: x.date,
+        cycle: ['month', 'year', 'week'].includes(x.cycle) ? x.cycle : 'month', amount: Number(x.amount) || 0 }));
+    if (!valid.length) return note('가져올 수 있는 구독이 없어요. 파일을 확인해 주세요.');
+    const ids = new Set(valid.map((x) => x.id));
+    subs = subs.filter((s) => !ids.has(s.id)).concat(valid);
+    save(); render();
+    note(`${valid.length}건을 가져왔어요.`);
+  } catch { note('JSON 파일을 읽을 수 없어요.'); }
+};
+function note(msg) { $('toast').textContent = msg; }
 
 function syncKind() {
   const trial = document.querySelector('[name=kind]').value === 'trial';
@@ -354,7 +423,7 @@ $('next').onclick = () => { view = new Date(view.getFullYear(), view.getMonth() 
 $('clear').onclick = () => { if (subs.length && confirm('모든 구독을 삭제할까요?')) { subs = []; save(); render(); } };
 $('sample').onclick = () => {
   const t = today(), at = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
-  const mk = (name, kind, n, cycle, amount) => ({ id: name + n, name, kind, date: at(n), cycle, amount });
+  const mk = (name, kind, n, cycle, amount) => ({ id: newId(), name, kind, date: at(n), cycle, amount });
   subs.push(mk('Netflix', 'pay', 3, 'month', 17000), mk('YouTube Premium', 'pay', 10, 'month', 14900),
     mk('Notion', 'pay', 40, 'year', 120000), mk('Spotify 체험', 'trial', 2, 'month', 10900),
     mk('ChatGPT 체험', 'trial', 12, 'month', 29000));
