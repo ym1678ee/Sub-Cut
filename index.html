@@ -107,7 +107,7 @@
   </section>
 
   <section class="card">
-    <h2>남은 일정</h2>
+    <h2>남은 결제 일정</h2>
     <ul class="agenda" id="agenda"></ul>
     <button type="button" class="toggle" id="agendaToggle" aria-controls="agenda" aria-expanded="false" hidden></button>
   </section>
@@ -136,7 +136,7 @@
             <option value="week">매주</option>
           </select>
         </label>
-        <label>결제 기준일
+        <label>결제 일자
           <input id="baseDate" type="date">
         </label>
       </div>
@@ -450,7 +450,7 @@ function renderDayDetail(today, dayEvents) {
   }
 }
 
-const AGENDA_VISIBLE = 3; // 남은 일정은 기본으로 이 건수만 보여주고, 나머지는 펼쳐서 본다
+const AGENDA_VISIBLE = 3; // 남은 결제 일정은 기본으로 이 건수만 보여주고, 나머지는 펼쳐서 본다
 let agendaExpanded = false;
 
 function renderAgenda(today, events) {
@@ -468,7 +468,7 @@ function renderAgenda(today, events) {
   if (events.length === 0) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = '이번 달 남은 일정이 없어요.';
+    li.textContent = '이번 달 남은 결제 일정이 없어요.';
     ul.appendChild(li);
     return;
   }
@@ -551,7 +551,7 @@ function render() {
     const left = s.kind === 'trial' ? daysUntil(s.expiryDate, today) : 0;
     meta.textContent = s.kind === 'trial'
       ? `체험 만료일 ${s.expiryDate} · ${left < 0 ? `만료됨 (${ddayText(left)})` : ddayText(left)}`
-      :`${s.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[s.cycle]} · 결제 기준일 ${s.baseDate}`;
+      :`${s.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[s.cycle]} · 결제 일자 ${s.baseDate}`;
 
     li.append(name, badge, meta);
 
@@ -601,7 +601,7 @@ function readForm() {
     return { error: '금액은 0 이상의 정수로 입력해 주세요.' };
   }
   const baseDate = $('baseDate').value;
-  if (!DATE_RE.test(baseDate)) return { error: '결제 기준일을 입력해 주세요.' };
+  if (!DATE_RE.test(baseDate)) return { error: '결제 일자를 입력해 주세요.' };
   return { sub: { id: newId(), name, kind: 'pay', amount, cycle: $('cycle').value, baseDate } };
 }
 
