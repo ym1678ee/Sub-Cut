@@ -130,7 +130,7 @@
   @media (prefers-reduced-motion: reduce) { .start-hint { animation: none; } }
   #mainTitle:focus, #manageTitle:focus, #listTitle:focus, #calTitle:focus { outline: none; }
 
-  /* 화면 이동 링크: 메인의 "구독 목록 등록하기", 구독 관리 화면의 "←Home" */
+  /* 화면 이동 링크: 메인의 "구독 목록 확인하기", 구독 관리 화면의 "←Home" */
   a.navbtn { display: block; margin-bottom: 16px; padding: 12px; text-align: center; text-decoration: none; font-weight: 600;
     color: var(--accent); background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
   a.navlink { display: inline-block; padding: 6px 12px; text-decoration: none; font-weight: 600; color: var(--text);
@@ -170,7 +170,7 @@
   </section>
 
   <a href="#manage" class="navbtn" id="goManage"></a>
-  <p class="hint" id="emptyHint" hidden>구독 목록 등록하기를 눌러 구독을 등록하세요.</p>
+  <p class="hint" id="emptyHint" hidden>구독 목록 확인하기를 눌러 구독을 등록하세요.</p>
 
   <section class="card">
     <div class="cal-head">
@@ -686,7 +686,7 @@ const activeSubs = () => subs.filter((s) => !s.endDate);
 
 function renderNav() {
   const n = activeSubs().length;
-  $('goManage').textContent = `구독 목록 등록하기 (${n})`;
+  $('goManage').textContent = `구독 목록 확인하기 (${n})`;
   $('emptyHint').hidden = n > 0;
   $('listTitle').textContent = `등록된 구독 (${n})`;
 }
