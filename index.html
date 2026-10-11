@@ -7,12 +7,12 @@
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
-    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --trial: #c2410c;
+    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --trial: #c2410c; --sel: #e7ecff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141b; --card: #1a1f2b; --text: #e8ebf2; --muted: #98a2b3; --line: #2b3242;
-      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --trial: #fb923c;
+      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --trial: #fb923c; --sel: #26304f;
     }
   }
   * { box-sizing: border-box; }
@@ -64,6 +64,17 @@
   .agenda .what { min-width: 0; overflow-wrap: anywhere; }
   .agenda .trial-tag { color: var(--trial); font-weight: 600; }
   .agenda .pay-tag { color: var(--accent); }
+  .cal .num { display: block; }
+  button.cell { font: inherit; font-weight: normal; color: inherit; background: transparent; width: 100%; cursor: pointer; }
+  button.cell:hover { border-color: var(--accent); }
+  .cal .cell.selected { background: var(--sel); border-color: var(--accent); }
+  .day-detail { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .day-detail[hidden] { display: none; }
+  .day-detail .day-head { font-weight: 600; margin-bottom: 8px; }
+  .day-detail ul { gap: 6px; }
+  .day-detail .pay-tag { color: var(--accent); }
+  .day-detail .trial-tag { color: var(--trial); }
+  .day-detail .day-sum { margin-top: 8px; font-size: 13px; font-weight: 600; text-align: right; }
   button.toggle { width: 100%; margin-top: 10px; background: transparent; color: var(--accent); border: 1px solid var(--line); }
   button.toggle[hidden] { display: none; }
 </style>
@@ -89,6 +100,7 @@
       <span><span class="pay">●</span> 결제일</span>
       <span><span class="trial">◆</span> 체험 만료일</span>
     </div>
+    <div class="day-detail" id="dayDetail" role="region" aria-live="polite" hidden></div>
   </section>
 
   <section class="card">
@@ -286,7 +298,7 @@ function monthEvents(list, today) {
       }
     } else {
       for (const date of remainingPaymentDates(s, today)) {
-        events.push({ date, kind: 'pay', name: s.name, amount: s.amount });
+        events.push({ date, kind: 'pay', name: s.name, amount: s.amount, cycle: s.cycle });
       }
     }
   }
@@ -310,6 +322,7 @@ function renderSummary(today) {
 }
 
 const MAX_MARKS = 3; // 한 칸에 마커를 이 개수까지 그리고 나머지는 +N으로 줄인다
+let selectedDate = null; // 캘린더에서 눌러 상세를 보고 있는 날짜 ('YYYY-MM-DD')
 
 function renderCalendar(today, events) {
   const t = parseYMD(today);
@@ -317,6 +330,8 @@ function renderCalendar(today, events) {
 
   const byDate = {};
   for (const e of events) (byDate[e.date] ||= []).push(e);
+  // 선택한 날짜에 일정이 없어졌으면(구독 변경 등) 선택을 푼다.
+  if (selectedDate && !byDate[selectedDate]) selectedDate = null;
 
   const cal = $('cal');
   cal.replaceChildren();
@@ -338,18 +353,22 @@ function renderCalendar(today, events) {
 
   for (let d = 1; d <= daysInMonth(t.y, t.m); d++) {
     const ds = fmt(t.y, t.m, d);
-    const cell = document.createElement('div');
+    const todays = byDate[ds] || [];
+    // 일정이 있는 날만 누를 수 있게 button으로 만든다.
+    const cell = document.createElement(todays.length > 0 ? 'button' : 'div');
     cell.className = 'cell';
+    if (todays.length > 0) cell.type = 'button';
     if (ds < today) cell.classList.add('past');
     if (ds === today) { cell.classList.add('today'); cell.setAttribute('aria-current', 'date'); }
 
-    const num = document.createElement('div');
+    // button 안에는 div를 넣을 수 없어서 span을 쓴다. (줄바꿈은 CSS의 display로 처리)
+    const num = document.createElement('span');
+    num.className = 'num';
     num.textContent = d;
 
-    const marks = document.createElement('div');
+    const marks = document.createElement('span');
     marks.className = 'marks';
     marks.setAttribute('aria-hidden', 'true');
-    const todays = byDate[ds] || [];
     for (const e of todays.slice(0, MAX_MARKS)) {
       const m = document.createElement('span');
       m.className = e.kind;
@@ -366,11 +385,66 @@ function renderCalendar(today, events) {
     cell.append(num, marks);
     if (todays.length > 0) {
       // 마커는 모양과 색만 쓰므로, 스크린 리더용으로 그날 일정을 글로 적어 둔다.
-      cell.setAttribute('role', 'group');
       cell.setAttribute('aria-label',
         `${t.m}월 ${d}일 ${WEEKDAYS[weekdayOf(ds)]}요일, 일정 ${todays.length}건: ${todays.map(eventText).join(', ')}`);
+      cell.setAttribute('aria-pressed', String(ds === selectedDate));
+      if (ds === selectedDate) cell.classList.add('selected');
+      // 같은 날짜를 다시 누르면 상세를 닫는다.
+      cell.addEventListener('click', () => { selectedDate = ds === selectedDate ? null : ds; render(); });
     }
     cal.appendChild(cell);
+  }
+
+  renderDayDetail(today, byDate[selectedDate]);
+}
+
+// 선택한 날짜의 일정 상세. 선택이 없으면 숨긴다.
+function renderDayDetail(today, dayEvents) {
+  const box = $('dayDetail');
+  box.replaceChildren();
+  box.hidden = !selectedDate;
+  if (!selectedDate) return;
+
+  const { m, d } = parseYMD(selectedDate);
+  box.setAttribute('aria-label', `${m}월 ${d}일 일정 상세`);
+
+  const head = document.createElement('div');
+  head.className = 'day-head';
+  head.textContent = `${monthDay(selectedDate)} (${WEEKDAYS[weekdayOf(selectedDate)]}) · ` +
+    `${ddayText(daysUntil(selectedDate, today))} · 일정 ${dayEvents.length}건`;
+  box.appendChild(head);
+
+  const ul = document.createElement('ul');
+  let paySum = 0, hasPay = false;
+  for (const e of dayEvents) {
+    const li = document.createElement('li');
+
+    const title = document.createElement('div');
+    title.className = 'name';
+    const mark = document.createElement('span');
+    mark.className = e.kind === 'trial' ? 'trial-tag' : 'pay-tag';
+    mark.textContent = e.kind === 'trial' ? '◆' : '●';
+    title.append(mark, ` ${e.name}`);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    if (e.kind === 'trial') {
+      meta.textContent = `체험 만료일 ${e.date}`;
+    } else {
+      meta.textContent = `${e.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[e.cycle]} 결제`;
+      paySum += e.amount;
+      hasPay = true;
+    }
+    li.append(title, meta);
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+
+  if (hasPay) {
+    const sum = document.createElement('div');
+    sum.className = 'day-sum';
+    sum.textContent = `이날 결제 합계 ${paySum.toLocaleString('ko-KR')}원`;
+    box.appendChild(sum);
   }
 }
 
