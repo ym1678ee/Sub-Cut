@@ -127,7 +127,7 @@
 
       <div class="fields" id="payFields">
         <label>금액 (원)
-          <input id="amount" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 17000">
+          <input id="amount" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="예: 17000">
         </label>
         <label>결제 주기
           <select id="cycle">
@@ -623,6 +623,14 @@ $('form').addEventListener('submit', (e) => {
 });
 
 $('kind').addEventListener('change', () => { $('error').textContent = ''; syncKind(); });
+
+// 금액은 직접 입력만 받는다. 숫자 칸의 증감 버튼/방향키/휠 대신 일반 입력칸을 쓰고, 숫자 외 글자는 지운다.
+// (붙여넣은 "17,000"도 17000이 된다.)
+$('amount').addEventListener('input', () => {
+  const el = $('amount');
+  const digits = el.value.replace(/\D/g, '');
+  if (digits !== el.value) el.value = digits;
+});
 
 $('agendaToggle').addEventListener('click', () => { agendaExpanded = !agendaExpanded; render(); });
 $('listToggle').addEventListener('click', () => { listOpen = !listOpen; renderListToggle(); });
