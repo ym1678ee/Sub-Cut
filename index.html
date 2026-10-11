@@ -395,10 +395,13 @@ function renderAgenda(today, events) {
     const what = document.createElement('span');
     what.className = 'what';
     if (e.kind === 'trial') {
-      const tag = document.createElement('span');
-      tag.className = 'trial-tag';
-      tag.textContent = '◆ 체험 만료';
-      what.append(tag, ` · ${e.name}`);
+      const mark = document.createElement('span');
+      mark.className = 'trial-tag';
+      mark.textContent = '◆';
+      const label = document.createElement('span');
+      label.className = 'trial-tag';
+      label.textContent = '체험 만료';
+      what.append(mark, ` ${e.name} · `, label);
     } else {
       const dot = document.createElement('span');
       dot.className = 'pay-tag';
