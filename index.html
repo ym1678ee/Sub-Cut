@@ -1,18 +1,10 @@
 <!doctype html>
-<html lang="ko">
+<!-- show-intro: 접속할 때마다 시작 화면을 먼저 보여준다. 클래스를 HTML에 직접 두어 메인 화면이 잠깐 보였다 사라지지 않게 한다. -->
+<html lang="ko" class="show-intro">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sub-Cut</title>
-<script>
-// 처음 방문이면 시작 화면을 먼저 보여준다. 메인 화면이 잠깐 보였다 사라지지 않도록 <head>에서 미리 정한다.
-// 저장소를 읽을 수 없는 환경에서는 "봤음"을 기억할 수 없으므로 매번 시작 화면을 보여준다.
-try {
-  if (!localStorage.getItem('sub-cut:intro-seen')) document.documentElement.classList.add('show-intro');
-} catch (e) {
-  document.documentElement.classList.add('show-intro');
-}
-</script>
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
@@ -98,7 +90,7 @@ try {
   button.toggle { width: 100%; margin-top: 10px; background: transparent; color: var(--accent); border: 1px solid var(--line); }
   button.toggle[hidden] { display: none; }
 
-  /* 시작 화면: 처음 방문할 때만 화면 전체를 덮는 버튼. 어디를 눌러도 메인 화면으로 넘어간다. */
+  /* 시작 화면: 접속할 때마다 화면 전체를 덮는 버튼. 어디를 눌러도 메인 화면으로 넘어간다. */
   #start { display: none; }
   .show-intro #start { display: grid; }
   .show-intro #main { display: none; }
@@ -852,10 +844,10 @@ window.addEventListener('hashchange', () => {
 });
 
 // ---------- 시작 화면 ----------
-// 시작 화면을 누르면 "봤음"을 기록하고, 주소에 맞는 화면으로 넘어간다. (누르기 전에 새로고침하면 다시 보인다)
-const INTRO_KEY = 'sub-cut:intro-seen';
+// 시작 화면은 접속할 때마다(새로고침 포함) 보이고, 누르면 주소에 맞는 화면으로 넘어간다.
+// 화면 전환(#manage 등)은 문서를 다시 불러오지 않으므로, 앱 안에서 이동할 때는 다시 나타나지 않는다.
+// 아무것도 저장하지 않는다. (이전 버전이 남긴 'sub-cut:intro-seen' 기록이 있어도 무시한다)
 $('start').addEventListener('click', () => {
-  try { localStorage.setItem(INTRO_KEY, '1'); } catch { /* 저장소를 못 쓰면 다음에도 시작 화면이 보인다 */ }
   document.documentElement.classList.remove('show-intro');
   window.scrollTo(0, 0);
   routeTitle().focus(); // 키보드 사용자가 화면에서 이어서 움직일 수 있게 제목으로 포커스를 옮긴다
