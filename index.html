@@ -64,6 +64,8 @@
   .agenda .what { min-width: 0; overflow-wrap: anywhere; }
   .agenda .trial-tag { color: var(--trial); font-weight: 600; }
   .agenda .pay-tag { color: var(--accent); }
+  button.toggle { width: 100%; margin-top: 10px; background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button.toggle[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -92,6 +94,7 @@
   <section class="card">
     <h2>남은 일정</h2>
     <ul class="agenda" id="agenda"></ul>
+    <button type="button" class="toggle" id="agendaToggle" aria-controls="agenda" aria-expanded="false" hidden></button>
   </section>
 
   <section class="card">
@@ -371,9 +374,21 @@ function renderCalendar(today, events) {
   }
 }
 
+const AGENDA_VISIBLE = 3; // 남은 일정은 기본으로 이 건수만 보여주고, 나머지는 펼쳐서 본다
+let agendaExpanded = false;
+
 function renderAgenda(today, events) {
   const ul = $('agenda');
   ul.replaceChildren();
+
+  // 건수가 적으면 접을 필요가 없으므로 버튼을 숨기고 펼침 상태도 되돌린다.
+  const collapsible = events.length > AGENDA_VISIBLE;
+  if (!collapsible) agendaExpanded = false;
+  const toggle = $('agendaToggle');
+  toggle.hidden = !collapsible;
+  toggle.setAttribute('aria-expanded', String(agendaExpanded));
+  toggle.textContent = agendaExpanded ? '접기' : `나머지 ${events.length - AGENDA_VISIBLE}건 더 보기`;
+
   if (events.length === 0) {
     const li = document.createElement('li');
     li.className = 'empty';
@@ -381,7 +396,8 @@ function renderAgenda(today, events) {
     ul.appendChild(li);
     return;
   }
-  for (const e of events) {
+  const shown = agendaExpanded ? events : events.slice(0, AGENDA_VISIBLE);
+  for (const e of shown) {
     const li = document.createElement('li');
 
     const date = document.createElement('span');
@@ -519,6 +535,8 @@ $('form').addEventListener('submit', (e) => {
 });
 
 $('kind').addEventListener('change', () => { $('error').textContent = ''; syncKind(); });
+
+$('agendaToggle').addEventListener('click', () => { agendaExpanded = !agendaExpanded; render(); });
 
 // ---------- 시작 ----------
 $('storageNotice').hidden = storageAvailable();
