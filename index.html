@@ -67,6 +67,8 @@
   .legend .trial { color: var(--trial); }
 
   .agenda li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 10px; align-items: baseline; }
+  /* 일정이 없을 때의 안내 문구는 3칸 격자 대신 일반 블록으로 두어 가운데 정렬한다. */
+  .agenda li.empty { display: block; text-align: center; }
   .agenda .date { font-weight: 600; font-variant-numeric: tabular-nums; }
   .agenda .dday { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; font-variant-numeric: tabular-nums; }
   .agenda .dday.urgent { color: var(--dd-red-fg); background: var(--dd-red-bg); border-color: var(--dd-red-bd); font-weight: 700; }
