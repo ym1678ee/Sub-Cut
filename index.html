@@ -7,12 +7,12 @@
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
-    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --trial: #c2410c; --sel: #e7ecff;
+    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --on-err: #ffffff; --trial: #c2410c; --sel: #e7ecff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141b; --card: #1a1f2b; --text: #e8ebf2; --muted: #98a2b3; --line: #2b3242;
-      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --trial: #fb923c; --sel: #26304f;
+      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --on-err: #2a1114; --trial: #fb923c; --sel: #26304f;
     }
   }
   * { box-sizing: border-box; }
@@ -67,6 +67,12 @@
   .status { color: var(--muted); font-size: 13px; min-height: 1.2em; margin: 8px 0 0; }
   ul[hidden] { display: none; }
   #list { margin-top: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 8px; }
+  .actions .ask { margin-right: auto; font-size: 13px; color: var(--err); font-weight: 600; }
+  button.small { padding: 4px 12px; font-size: 13px; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button.ghost.del { color: var(--err); }
+  button.danger { background: var(--err); color: var(--on-err); }
   .cal .num { display: block; }
   button.cell { font: inherit; font-weight: normal; color: inherit; background: transparent; width: 100%; cursor: pointer; }
   button.cell:hover { border-color: var(--accent); }
@@ -515,6 +521,63 @@ function renderListToggle() {
   $('list').hidden = !listOpen;
 }
 
+// ---------- 삭제 ----------
+let confirmingDeleteId = null; // 지금 "정말 삭제할까요?"를 묻고 있는 구독의 id
+
+function makeButton(text, className, label, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = className;
+  b.textContent = text;
+  b.setAttribute('aria-label', label);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+const findItem = (id) => [...$('list').querySelectorAll('li')].find((li) => li.dataset.id === id);
+
+function askDelete(s) {
+  confirmingDeleteId = s.id;
+  render();
+  findItem(s.id)?.querySelector('.confirm-no')?.focus(); // 실수로 바로 지우지 않도록 취소에 포커스를 둔다
+}
+
+function cancelDelete(s) {
+  confirmingDeleteId = null;
+  render();
+  findItem(s.id)?.querySelector('.del')?.focus();
+}
+
+function deleteSub(s) {
+  subs = subs.filter((x) => x.id !== s.id);
+  confirmingDeleteId = null;
+  $('storageNotice').hidden = saveSubs(subs);
+  $('error').textContent = '';
+  $('status').textContent = `${s.name} 삭제 완료`;
+  render();
+  $('listToggle').focus(); // 지운 항목은 사라졌으므로 포커스를 목록 버튼으로 옮긴다
+}
+
+function buildActions(s) {
+  const box = document.createElement('div');
+  box.className = 'actions';
+  if (s.id === confirmingDeleteId) {
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', `${s.name} 삭제 확인`);
+    const ask = document.createElement('span');
+    ask.className = 'ask';
+    ask.textContent = '정말 삭제할까요?';
+    box.append(
+      ask,
+      makeButton('취소', 'small ghost confirm-no', `${s.name} 삭제 취소`, () => cancelDelete(s)),
+      makeButton('삭제', 'small danger confirm-yes', `${s.name} 삭제 확정`, () => deleteSub(s)),
+    );
+  } else {
+    box.append(makeButton('삭제', 'small ghost del', `${s.name} 삭제`, () => askDelete(s)));
+  }
+  return box;
+}
+
 function render() {
   const today = getToday();
   renderSummary(today);
@@ -525,6 +588,8 @@ function render() {
 
   const list = $('list');
   list.replaceChildren();
+  // 확인을 묻던 구독이 이미 없으면 확인 상태를 푼다.
+  if (confirmingDeleteId && !subs.some((s) => s.id === confirmingDeleteId)) confirmingDeleteId = null;
 
   if (subs.length === 0) {
     const li = document.createElement('li');
@@ -566,6 +631,13 @@ function render() {
           (dates.length > 1 ? ` (${dates.length}회)` : '');
       li.appendChild(due);
     }
+
+    li.dataset.id = s.id;
+    li.appendChild(buildActions(s));
+    // 삭제 확인 중에 Esc를 누르면 취소한다.
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && confirmingDeleteId === s.id) cancelDelete(s);
+    });
     list.appendChild(li);
   }
 }
