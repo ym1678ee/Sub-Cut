@@ -93,6 +93,7 @@
   #list { margin-top: 12px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 8px; }
   .actions .ask { margin-right: auto; font-size: 13px; color: var(--err); font-weight: 600; }
+  .actions .ask.ask-end { color: var(--text); } /* 해지 확인 문구는 삭제 확인처럼 경고색이 아니다 */
   button.small { padding: 4px 12px; font-size: 13px; font-weight: 600; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
   button.ghost.del { color: var(--err); }
@@ -260,6 +261,8 @@ const $ = (id) => document.getElementById(id);
 // 구독 목록은 항상 배열이다. 저장소가 막혀 있거나 비어 있어도 빈 배열로 시작한다.
 function isValidSub(s) {
   if (!s || typeof s.id !== 'string' || typeof s.name !== 'string') return false;
+  // endDate(해지일)는 없어도 되는 항목이다. 없으면 해지하지 않은 구독이다. (이전에 저장한 데이터도 그대로 읽힌다)
+  if (s.endDate !== undefined && !DATE_RE.test(s.endDate)) return false;
   if (s.kind === 'trial') return DATE_RE.test(s.expiryDate);
   if (s.kind === 'pay') {
     return Number.isInteger(s.amount) && s.amount >= 0 &&
@@ -327,7 +330,13 @@ function getToday() {
 
 // y년 m월 한 달 동안의 이 구독의 결제일 목록(지난 날짜 포함)을 돌려준다.
 // 체험은 결제하지 않으므로 항상 빈 배열이다. 기준일 이전에는 결제가 없다.
+// 해지한 구독(endDate 있음)은 해지일 "전"의 결제만 인정한다. 해지일 당일과 그 이후는 결제하지 않은 것으로 본다.
 function paymentDatesInMonth(sub, y, m) {
+  return scheduledPaymentDates(sub, y, m).filter((ds) => !sub.endDate || ds < sub.endDate);
+}
+
+// 해지를 고려하지 않고, 결제 일자와 주기만으로 계산한 결제일 목록
+function scheduledPaymentDates(sub, y, m) {
   if (sub.kind !== 'pay') return [];
   const base = parseYMD(sub.baseDate);
 
@@ -405,7 +414,7 @@ function monthEvents(list, today) {
   const events = [];
   for (const s of list) {
     if (s.kind === 'trial') {
-      if (s.expiryDate >= today && s.expiryDate <= monthEnd) {
+      if (s.expiryDate >= today && s.expiryDate <= monthEnd && (!s.endDate || s.expiryDate < s.endDate)) {
         events.push({ date: s.expiryDate, kind: 'trial', name: s.name });
       }
     } else {
@@ -426,7 +435,10 @@ function calendarEvents(list, y, m) {
   const events = [];
   for (const s of list) {
     if (s.kind === 'trial') {
-      if (s.expiryDate >= first && s.expiryDate <= last) events.push({ date: s.expiryDate, kind: 'trial', name: s.name });
+      // 체험을 해지했다면 해지일 이후의 만료 알림은 지운다. (해지일 전에 이미 지난 만료일은 남는다)
+      if (s.expiryDate >= first && s.expiryDate <= last && (!s.endDate || s.expiryDate < s.endDate)) {
+        events.push({ date: s.expiryDate, kind: 'trial', name: s.name });
+      }
     } else {
       for (const date of paymentDatesInMonth(s, y, m)) {
         events.push({ date, kind: 'pay', name: s.name, amount: s.amount, cycle: s.cycle });
@@ -669,14 +681,19 @@ function renderAgenda(today, events) {
 }
 
 // 구독 개수에 따라 바뀌는 문구: 메인의 이동 링크, 빈 상태 안내, 구독 관리 화면의 목록 제목
+// 목록에 보이는 구독 = 해지하지 않은 구독. 해지한 구독은 목록에서 빠지지만, 이전 결제 기록은 달력과 총액에 남는다.
+const activeSubs = () => subs.filter((s) => !s.endDate);
+
 function renderNav() {
-  $('goManage').textContent = `구독 목록 등록하기 (${subs.length})`;
-  $('emptyHint').hidden = subs.length > 0;
-  $('listTitle').textContent = `등록된 구독 (${subs.length})`;
+  const n = activeSubs().length;
+  $('goManage').textContent = `구독 목록 등록하기 (${n})`;
+  $('emptyHint').hidden = n > 0;
+  $('listTitle').textContent = `등록된 구독 (${n})`;
 }
 
 // ---------- 삭제 ----------
 let confirmingDeleteId = null; // 지금 "정말 삭제할까요?"를 묻고 있는 구독의 id
+let confirmingEndId = null;    // 지금 "해당 서비스를 해지하셨나요?"를 묻고 있는 구독의 id
 
 function makeButton(text, className, label, onClick) {
   const b = document.createElement('button');
@@ -692,6 +709,7 @@ const findItem = (id) => [...$('list').querySelectorAll('li')].find((li) => li.d
 
 function askDelete(s) {
   confirmingDeleteId = s.id;
+  confirmingEndId = null; // 확인은 한 번에 하나만 묻는다
   render();
   findItem(s.id)?.querySelector('.confirm-no')?.focus(); // 실수로 바로 지우지 않도록 취소에 포커스를 둔다
 }
@@ -713,10 +731,48 @@ function deleteSub(s) {
   $('listTitle').focus(); // 지운 항목은 사라졌으므로 포커스를 목록 제목으로 옮긴다
 }
 
+// ---------- 해지 ----------
+// 해지: 오늘을 해지일(endDate)로 기록한다. 구독은 목록에서 사라지지만, 오늘 이전의 결제 기록은 달력과 월별 총액에 남는다.
+// (삭제는 구독과 기록을 모두 지운다.)
+function askEnd(s) {
+  confirmingEndId = s.id;
+  confirmingDeleteId = null;
+  render();
+  findItem(s.id)?.querySelector('.confirm-no')?.focus(); // 실수로 바로 해지하지 않도록 "해지 취소"에 포커스를 둔다
+}
+
+function abortEnd(s) {
+  confirmingEndId = null;
+  render();
+  findItem(s.id)?.querySelector('.end')?.focus();
+}
+
+function endSub(s) {
+  subs = subs.map((x) => (x.id === s.id ? { ...x, endDate: getToday() } : x));
+  confirmingEndId = null;
+  if (editingId === s.id) stopEdit(); // 수정 중이던 항목을 해지하면 수정 모드도 끝낸다
+  $('storageNotice').hidden = saveSubs(subs);
+  $('error').textContent = '';
+  $('status').textContent = `${s.name} 해지 완료`;
+  render();
+  $('listTitle').focus(); // 해지한 항목은 목록에서 사라졌으므로 포커스를 목록 제목으로 옮긴다
+}
+
 function buildActions(s) {
   const box = document.createElement('div');
   box.className = 'actions';
-  if (s.id === confirmingDeleteId) {
+  if (s.id === confirmingEndId) {
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', `${s.name} 해지 확인`);
+    const ask = document.createElement('span');
+    ask.className = 'ask ask-end';
+    ask.textContent = '해당 서비스를 해지하셨나요?';
+    box.append(
+      ask,
+      makeButton('해지 취소', 'small ghost confirm-no', `${s.name} 해지 취소`, () => abortEnd(s)),
+      makeButton('해지', 'small confirm-yes end-yes', `${s.name} 해지 확정`, () => endSub(s)),
+    );
+  } else if (s.id === confirmingDeleteId) {
     box.setAttribute('role', 'group');
     box.setAttribute('aria-label', `${s.name} 삭제 확인`);
     const ask = document.createElement('span');
@@ -730,6 +786,7 @@ function buildActions(s) {
   } else {
     box.append(
       makeButton('수정', 'small ghost edit', `${s.name} 수정`, () => startEdit(s)),
+      makeButton('해지', 'small ghost end', `${s.name} 해지`, () => askEnd(s)),
       makeButton('삭제', 'small ghost del', `${s.name} 삭제`, () => askDelete(s)),
     );
   }
@@ -746,10 +803,12 @@ function render() {
 
   const list = $('list');
   list.replaceChildren();
-  // 확인을 묻던 구독이 이미 없으면 확인 상태를 푼다.
-  if (confirmingDeleteId && !subs.some((s) => s.id === confirmingDeleteId)) confirmingDeleteId = null;
+  // 목록에는 해지하지 않은 구독만 보인다. 확인을 묻던 구독이 목록에서 없어졌으면 확인 상태를 푼다.
+  const shown = activeSubs();
+  if (confirmingDeleteId && !shown.some((s) => s.id === confirmingDeleteId)) confirmingDeleteId = null;
+  if (confirmingEndId && !shown.some((s) => s.id === confirmingEndId)) confirmingEndId = null;
 
-  if (subs.length === 0) {
+  if (shown.length === 0) {
     const li = document.createElement('li');
     li.className = 'empty';
     li.textContent = '아직 등록된 구독이 없어요.';
@@ -757,7 +816,7 @@ function render() {
     return;
   }
 
-  for (const s of subs) {
+  for (const s of shown) {
     const li = document.createElement('li');
 
     const name = document.createElement('span');
@@ -793,9 +852,11 @@ function render() {
     li.dataset.id = s.id;
     if (s.id === editingId) li.classList.add('editing');
     li.appendChild(buildActions(s));
-    // 삭제 확인 중에 Esc를 누르면 취소한다.
+    // 삭제/해지 확인 중에 Esc를 누르면 취소한다.
     li.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && confirmingDeleteId === s.id) cancelDelete(s);
+      if (e.key !== 'Escape') return;
+      if (confirmingDeleteId === s.id) cancelDelete(s);
+      else if (confirmingEndId === s.id) abortEnd(s);
     });
     list.appendChild(li);
   }
@@ -870,6 +931,7 @@ let editingId = null; // 지금 폼에서 수정 중인 구독의 id (null이면
 function startEdit(s) {
   editingId = s.id;
   confirmingDeleteId = null;
+  confirmingEndId = null;
   $('name').value = s.name;
   $('kind').value = s.kind;
   $('kind').disabled = true;
@@ -947,6 +1009,7 @@ window.addEventListener('hashchange', () => {
   if (currentRoute() === 'home') {
     if (editingId) stopEdit();
     confirmingDeleteId = null;
+    confirmingEndId = null;
     $('error').textContent = '';
     $('status').textContent = '';
   }
