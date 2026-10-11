@@ -7,12 +7,12 @@
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
-    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d;
+    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d; --trial: #c2410c;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141b; --card: #1a1f2b; --text: #e8ebf2; --muted: #98a2b3; --line: #2b3242;
-      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82;
+      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82; --trial: #fb923c;
     }
   }
   * { box-sizing: border-box; }
@@ -42,6 +42,28 @@
   .summary .label { color: var(--muted); font-size: 13px; }
   .summary .total { font-size: 32px; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
   .summary .range { color: var(--muted); font-size: 13px; }
+
+  .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .cal .dow { text-align: center; font-size: 12px; color: var(--muted); padding-bottom: 2px; }
+  .cal .cell { min-height: 48px; border: 1px solid var(--line); border-radius: 6px; padding: 3px 2px;
+    text-align: center; font-size: 13px; }
+  .cal .blank { border: none; }
+  .cal .past { opacity: .45; }
+  .cal .today { outline: 2px solid var(--accent); outline-offset: -1px; font-weight: 700; }
+  .marks { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 1px; font-size: 12px; line-height: 1.2; min-height: 1.2em; }
+  .marks .pay { color: var(--accent); }
+  .marks .trial { color: var(--trial); }
+  .marks .more { color: var(--muted); font-size: 11px; }
+  .legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .legend .pay { color: var(--accent); }
+  .legend .trial { color: var(--trial); }
+
+  .agenda li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 10px; align-items: baseline; }
+  .agenda .date { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .agenda .dday { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+  .agenda .what { min-width: 0; overflow-wrap: anywhere; }
+  .agenda .trial-tag { color: var(--trial); font-weight: 600; }
+  .agenda .pay-tag { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -56,6 +78,20 @@
     <div class="label">이번 달 남은 구독료</div>
     <div class="total" id="total"></div>
     <div class="range" id="range"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="calTitle">이번 달 캘린더</h2>
+    <div class="cal" id="cal"></div>
+    <div class="legend" aria-hidden="true">
+      <span><span class="pay">●</span> 결제일</span>
+      <span><span class="trial">◆</span> 체험 만료일</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>남은 일정</h2>
+    <ul class="agenda" id="agenda"></ul>
   </section>
 
   <section class="card">
@@ -226,6 +262,41 @@ function remainingTotal(list, today) {
 
 const monthDay = (ds) => { const { m, d } = parseYMD(ds); return `${m}/${d}`; };
 
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+function weekdayOf(ds) {
+  const { y, m, d } = parseYMD(ds);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+const daysUntil = (ds, today) => toDayNumber(ds) - toDayNumber(today);
+const ddayText = (diff) => (diff === 0 ? 'D-DAY' : diff > 0 ? `D-${diff}` : `D+${-diff}`);
+
+// 오늘(포함)부터 이번 달 말일까지의 일정(결제일, 체험 만료일)을 날짜순으로 돌려준다.
+// 결제일은 총합과 같은 remainingPaymentDates로 구하므로 둘이 어긋나지 않는다.
+function monthEvents(list, today) {
+  const t = parseYMD(today);
+  const monthEnd = fmt(t.y, t.m, daysInMonth(t.y, t.m));
+  const events = [];
+  for (const s of list) {
+    if (s.kind === 'trial') {
+      if (s.expiryDate >= today && s.expiryDate <= monthEnd) {
+        events.push({ date: s.expiryDate, kind: 'trial', name: s.name });
+      }
+    } else {
+      for (const date of remainingPaymentDates(s, today)) {
+        events.push({ date, kind: 'pay', name: s.name, amount: s.amount });
+      }
+    }
+  }
+  // 날짜순. 같은 날에는 체험 만료를 먼저 보여준다. (놓치면 의도치 않은 결제가 생긴다)
+  const rank = (e) => (e.kind === 'trial' ? 0 : 1);
+  events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : rank(a) - rank(b)));
+  return events;
+}
+
+const eventText = (e) => (e.kind === 'trial'
+  ? `${e.name} 체험 만료`
+  : `${e.name} 결제 ${e.amount.toLocaleString('ko-KR')}원`);
+
 // ---------- 화면 ----------
 function renderSummary(today) {
   const t = parseYMD(today);
@@ -235,9 +306,117 @@ function renderSummary(today) {
     `${monthDay(today)} ~ ${t.m}/${daysInMonth(t.y, t.m)} · 결제 ${count}건`;
 }
 
+const MAX_MARKS = 3; // 한 칸에 마커를 이 개수까지 그리고 나머지는 +N으로 줄인다
+
+function renderCalendar(today, events) {
+  const t = parseYMD(today);
+  $('calTitle').textContent = `이번 달 · ${t.y}년 ${t.m}월`;
+
+  const byDate = {};
+  for (const e of events) (byDate[e.date] ||= []).push(e);
+
+  const cal = $('cal');
+  cal.replaceChildren();
+  for (const w of WEEKDAYS) {
+    const h = document.createElement('div');
+    h.className = 'dow';
+    h.textContent = w;
+    cal.appendChild(h);
+  }
+
+  // 1일이 시작하는 요일만큼 빈 칸을 둔다. (일요일 시작)
+  const lead = weekdayOf(fmt(t.y, t.m, 1));
+  for (let i = 0; i < lead; i++) {
+    const b = document.createElement('div');
+    b.className = 'cell blank';
+    b.setAttribute('aria-hidden', 'true');
+    cal.appendChild(b);
+  }
+
+  for (let d = 1; d <= daysInMonth(t.y, t.m); d++) {
+    const ds = fmt(t.y, t.m, d);
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    if (ds < today) cell.classList.add('past');
+    if (ds === today) { cell.classList.add('today'); cell.setAttribute('aria-current', 'date'); }
+
+    const num = document.createElement('div');
+    num.textContent = d;
+
+    const marks = document.createElement('div');
+    marks.className = 'marks';
+    marks.setAttribute('aria-hidden', 'true');
+    const todays = byDate[ds] || [];
+    for (const e of todays.slice(0, MAX_MARKS)) {
+      const m = document.createElement('span');
+      m.className = e.kind;
+      m.textContent = e.kind === 'trial' ? '◆' : '●';
+      marks.appendChild(m);
+    }
+    if (todays.length > MAX_MARKS) {
+      const more = document.createElement('span');
+      more.className = 'more';
+      more.textContent = `+${todays.length - MAX_MARKS}`;
+      marks.appendChild(more);
+    }
+
+    cell.append(num, marks);
+    if (todays.length > 0) {
+      // 마커는 모양과 색만 쓰므로, 스크린 리더용으로 그날 일정을 글로 적어 둔다.
+      cell.setAttribute('role', 'group');
+      cell.setAttribute('aria-label',
+        `${t.m}월 ${d}일 ${WEEKDAYS[weekdayOf(ds)]}요일, 일정 ${todays.length}건: ${todays.map(eventText).join(', ')}`);
+    }
+    cal.appendChild(cell);
+  }
+}
+
+function renderAgenda(today, events) {
+  const ul = $('agenda');
+  ul.replaceChildren();
+  if (events.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '이번 달 남은 일정이 없어요.';
+    ul.appendChild(li);
+    return;
+  }
+  for (const e of events) {
+    const li = document.createElement('li');
+
+    const date = document.createElement('span');
+    date.className = 'date';
+    date.textContent = `${monthDay(e.date)} (${WEEKDAYS[weekdayOf(e.date)]})`;
+
+    const dday = document.createElement('span');
+    dday.className = 'dday';
+    dday.textContent = ddayText(daysUntil(e.date, today));
+
+    const what = document.createElement('span');
+    what.className = 'what';
+    if (e.kind === 'trial') {
+      const tag = document.createElement('span');
+      tag.className = 'trial-tag';
+      tag.textContent = '◆ 체험 만료';
+      what.append(tag, ` · ${e.name}`);
+    } else {
+      const dot = document.createElement('span');
+      dot.className = 'pay-tag';
+      dot.textContent = '●';
+      what.append(dot, ` ${e.name} · ${e.amount.toLocaleString('ko-KR')}원`);
+    }
+
+    li.append(date, dday, what);
+    ul.appendChild(li);
+  }
+}
+
 function render() {
   const today = getToday();
   renderSummary(today);
+  const events = monthEvents(subs, today);
+  renderCalendar(today, events);
+  renderAgenda(today, events);
 
   const list = $('list');
   list.replaceChildren();
@@ -263,9 +442,11 @@ function render() {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
+    // 체험은 만료일이 이번 달이 아니어도 D-day를 보여준다. (다음 달 만료도 놓치지 않게)
+    const left = s.kind === 'trial' ? daysUntil(s.expiryDate, today) : 0;
     meta.textContent = s.kind === 'trial'
-      ? `체험 만료일 ${s.expiryDate}`
-      : `${s.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[s.cycle]} · 결제 기준일 ${s.baseDate}`;
+      ? `체험 만료일 ${s.expiryDate} · ${left < 0 ? `만료됨 (${ddayText(left)})` : ddayText(left)}`
+      :`${s.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[s.cycle]} · 결제 기준일 ${s.baseDate}`;
 
     li.append(name, badge, meta);
 
