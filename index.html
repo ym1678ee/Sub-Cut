@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sub-Cut</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1b1f2a; --muted: #667085; --line: #dfe3ea;
+    --accent: #3b5bdb; --warn: #b54708; --warn-bg: #fff4e5; --err: #c0262d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141b; --card: #1a1f2b; --text: #e8ebf2; --muted: #98a2b3; --line: #2b3242;
+      --accent: #7c93ff; --warn: #f5b04a; --warn-bg: #3a2f16; --err: #ff7b82;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 16px; font-size: 24px; }
+  h2 { margin: 0 0 12px; font-size: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  form { display: grid; gap: 12px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  input, select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); min-width: 0; }
+  button { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; cursor: pointer; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .fields { display: grid; gap: 12px; }
+  .fields[hidden] { display: none; }
+  .error { color: var(--err); font-size: 13px; min-height: 1.2em; margin: 0; }
+  .notice { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 16px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .name { font-weight: 600; }
+  .badge { font-size: 12px; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: 0 8px; margin-left: 8px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); text-align: center; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sub-Cut</h1>
+
+  <div class="notice" id="storageNotice" hidden>
+    이 브라우저에서는 저장소를 사용할 수 없어요. 입력한 내용은 새로고침하면 사라져요.
+  </div>
+
+  <section class="card">
+    <h2>구독 등록</h2>
+    <form id="form" novalidate>
+      <label>이름
+        <input id="name" required maxlength="50" placeholder="예: Netflix" autocomplete="off">
+      </label>
+      <label>종류
+        <select id="kind">
+          <option value="pay">정기 결제</option>
+          <option value="trial">무료 체험</option>
+        </select>
+      </label>
+
+      <div class="fields" id="payFields">
+        <label>금액 (원)
+          <input id="amount" type="number" inputmode="numeric" min="0" step="1" placeholder="예: 17000">
+        </label>
+        <label>결제 주기
+          <select id="cycle">
+            <option value="month">매월</option>
+            <option value="year">매년</option>
+            <option value="week">매주</option>
+          </select>
+        </label>
+        <label>결제 기준일
+          <input id="baseDate" type="date">
+        </label>
+      </div>
+
+      <div class="fields" id="trialFields" hidden>
+        <label>체험 만료일
+          <input id="expiryDate" type="date" disabled>
+        </label>
+      </div>
+
+      <p class="error" id="error" role="alert"></p>
+      <button type="submit">등록</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>등록된 구독</h2>
+    <ul id="list"></ul>
+  </section>
+</div>
+
+<script>
+const STORAGE_KEY = 'sub-cut:v2';
+const CYCLE_LABEL = { month: '매월', year: '매년', week: '매주' };
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- 저장소 ----------
+// 구독 목록은 항상 배열이다. 저장소가 막혀 있거나 비어 있어도 빈 배열로 시작한다.
+function isValidSub(s) {
+  if (!s || typeof s.id !== 'string' || typeof s.name !== 'string') return false;
+  if (s.kind === 'trial') return DATE_RE.test(s.expiryDate);
+  if (s.kind === 'pay') {
+    return Number.isInteger(s.amount) && s.amount >= 0 &&
+      s.cycle in CYCLE_LABEL && DATE_RE.test(s.baseDate);
+  }
+  return false;
+}
+
+function loadSubs() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(isValidSub) : [];
+  } catch {
+    return [];
+  }
+}
+
+// 저장에 성공하면 true, 실패하면 false
+function saveSubs(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function storageAvailable() {
+  try {
+    const k = STORAGE_KEY + ':probe';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let subs = loadSubs();
+
+// ---------- 화면 ----------
+function render() {
+  const list = $('list');
+  list.replaceChildren();
+
+  if (subs.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '아직 등록된 구독이 없어요.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const s of subs) {
+    const li = document.createElement('li');
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.name;
+
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = s.kind === 'trial' ? '무료 체험' : '정기 결제';
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = s.kind === 'trial'
+      ? `체험 만료일 ${s.expiryDate}`
+      : `${s.amount.toLocaleString('ko-KR')}원 · ${CYCLE_LABEL[s.cycle]} · 결제 기준일 ${s.baseDate}`;
+
+    li.append(name, badge, meta);
+    list.appendChild(li);
+  }
+}
+
+// 종류에 맞는 입력란만 보여준다. 숨긴 입력란은 disabled로 두어 검증 대상에서 뺀다.
+function syncKind() {
+  const trial = $('kind').value === 'trial';
+  $('payFields').hidden = trial;
+  $('trialFields').hidden = !trial;
+  for (const id of ['amount', 'cycle', 'baseDate']) $(id).disabled = trial;
+  $('expiryDate').disabled = !trial;
+}
+
+// ---------- 등록 ----------
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// 입력값을 검사해서 { sub } 또는 { error }를 돌려준다.
+function readForm() {
+  const name = $('name').value.trim();
+  if (!name) return { error: '이름을 입력해 주세요.' };
+
+  if ($('kind').value === 'trial') {
+    const expiryDate = $('expiryDate').value;
+    if (!DATE_RE.test(expiryDate)) return { error: '체험 만료일을 입력해 주세요.' };
+    return { sub: { id: newId(), name, kind: 'trial', expiryDate } };
+  }
+
+  const amountText = $('amount').value.trim();
+  const amount = Number(amountText);
+  if (amountText === '' || !Number.isInteger(amount) || amount < 0) {
+    return { error: '금액은 0 이상의 정수로 입력해 주세요.' };
+  }
+  const baseDate = $('baseDate').value;
+  if (!DATE_RE.test(baseDate)) return { error: '결제 기준일을 입력해 주세요.' };
+  return { sub: { id: newId(), name, kind: 'pay', amount, cycle: $('cycle').value, baseDate } };
+}
+
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const { sub, error } = readForm();
+  $('error').textContent = error || '';
+  if (error) return;
+
+  subs.push(sub);
+  $('storageNotice').hidden = saveSubs(subs);
+  render();
+
+  // 이름과 날짜, 금액은 비우고 종류와 주기는 유지한다. (연속 등록하기 편하게)
+  for (const id of ['name', 'amount', 'baseDate', 'expiryDate']) $(id).value = '';
+  $('name').focus();
+});
+
+$('kind').addEventListener('change', () => { $('error').textContent = ''; syncKind(); });
+
+// ---------- 시작 ----------
+$('storageNotice').hidden = storageAvailable();
+syncKind();
+render();
+</script>
+</body>
+</html>
